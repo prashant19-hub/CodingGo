@@ -32,6 +32,10 @@ func main() {
 		{
 		fmt.Println("Sunday")
 		}
+	case 31:
+		{
+		fmt.Println("Invalid day of month")
+		}
 	default:
 		fmt.Println("Invalid day of week")
 	}
