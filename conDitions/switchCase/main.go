@@ -39,4 +39,15 @@ func main() {
 	default:
 		fmt.Println("Invalid day of week")
 	}
+	clgbranch := "CSE"
+	switch clgbranch {
+	case "CSE":	
+		fmt.Println("Computer Science and Engineering")
+	case "ECE":	
+		fmt.Println("Electronics and Communication Engineering")
+	case "ME":	
+		fmt.Println("Mechanical Engineering")
+	default:
+		fmt.Println("Invalid branch")
+	}
 }
