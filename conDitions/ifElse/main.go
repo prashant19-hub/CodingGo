@@ -64,5 +64,13 @@ num := 10
      }else {
         println("limit is not 10 or greater than 10 and is odd", limit)
      }
+	 target := 50
+	 if (target == 50 || target > 50) && (target % 5 == 0) {
+		println("target is 50 or greater than 50 and is a multiple of 5")
+			 } else if (target == 50 || target > 50) && (target % 5 != 0) {
+		println("target is 50 or greater than 50 and is not a multiple of 5")
+			 } else {
+		println("target is not 50 or greater than 50 and is not a multiple of 5", target)
+			 
 }
-
+}
