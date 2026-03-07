@@ -1,0 +1,1884 @@
+ package main
+
+import (
+    "github.com/gin-gonic/gin"
+    "net/http"
+    "strconv"
+)
+
+type User struct {
+    ID   int    `json:"id"`
+    Name string `json:"name"`
+    Age  int    `json:"age"`
+}
+
+var users = []User{
+    {ID: 1, Name: "Amit", Age: 25},
+    {ID: 2, Name: "Priya", Age: 30},
+}
+
+func main() {
+    r := gin.Default()
+    
+    // GET /users - सभी users
+    r.GET("/users", getUsers)
+    
+    // GET /users/:id - specific user
+    r.GET("/users/:id", getUserByID)
+    
+    // POST /users - नया user add
+    r.POST("/users", createUser)
+    
+    // PUT /users/:id - update user
+    r.PUT("/users/:id", updateUser)
+    
+    // DELETE /users/:id - delete user
+    r.DELETE("/users/:id", deleteUser)
+    
+    r.Run(":8080")
+}
+
+func getUsers(c *gin.Context) {
+    c.IndentedJSON(http.StatusOK, users)
+}
+
+func getUserByID(c *gin.Context) {
+    id, _ := strconv.Atoi(c.Param("id"))
+    for _, user := range users {
+        if user.ID == id {
+            c.IndentedJSON(http.StatusOK, user)
+            return
+        }
+    }
+    c.JSON(http.StatusNotFound, gin.H{"error": "User not found"})
+}
+
+func createUser(c *gin.Context) {
+    var newUser User
+    if err := c.ShouldBindJSON(&newUser); err != nil {
+        c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+        return
+    }
+    newUser.ID = len(users) + 1
+    users = append(users, newUser)
+    c.JSON(http.StatusCreated, newUser)
+}
+
+func updateUser(c *gin.Context) {
+    id, _ := strconv.Atoi(c.Param("id"))
+    var updatedUser User
+    
+    if err := c.ShouldBindJSON(&updatedUser); err != nil {
+        c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+        return
+    }
+    
+    for i, user := range users {
+        if user.ID == id {
+            updatedUser.ID = id
+            users[i] = updatedUser
+            c.JSON(http.StatusOK, updatedUser)
+            return
+        }
+    }
+    c.JSON(http.StatusNotFound, gin.H{"error": "User not found"})
+}
+
+func deleteUser(c *gin.Context) {
+    id, _ := strconv.Atoi(c.Param("id"))
+    for i, user := range users {
+        if user.ID == id {
+            users = append(users[:i], users[i+1:]...)
+            c.JSON(http.StatusOK, gin.H{"message": "User deleted"})
+            return
+        }
+    }
+    c.JSON(http.StatusNotFound, gin.H{"error": "User not found"})
+}package main
+
+import (
+    "fmt"
+    "html/template"
+    "net/http"
+    "strconv"
+    "sync"
+)
+
+type Todo struct {
+    ID   int
+    Task string
+    Done bool
+}
+
+var (
+    todos   []Todo
+    nextID  = 1
+    mutex   sync.Mutex
+)
+
+func main() {
+    http.HandleFunc("/", homeHandler)
+    http.HandleFunc("/add", addHandler)
+    http.HandleFunc("/toggle/", toggleHandler)
+    http.HandleFunc("/delete/", deleteHandler)
+    
+    fmt.Println("Todo App chal raha hai: http://localhost:8080")
+    http.ListenAndServe(":8080", nil)
+}
+
+func homeHandler(w http.ResponseWriter, r *http.Request) {
+    tmpl := `
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <title>Go Todo App</title>
+        <style>body{font-family:Arial} input{padding:10px} button{padding:8px 15px}</style>
+    </head>
+    <body>
+        <h1>Todo List</h1>
+        <form action="/add" method="post">
+            <input type="text" name="task" placeholder="Naya task likho..." required>
+            <button type="submit">Add</button>
+        </form>
+        <ul>
+        {{range .}}
+            <li>
+                <input type="checkbox" {{if .Done}}checked{{end}} 
+                       onclick="location.href='/toggle/{{.ID}}'">
+                <span style="text-decoration:{{if .Done}}line-through{{end}};">{{.Task}}</span>
+                <a href="/delete/{{.ID}}" style="color:red;">Delete</a>
+            </li>
+        {{end}}
+        </ul>
+    </body>
+    </html>`
+    
+    mutex.Lock()
+    data := todos
+    mutex.Unlock()
+    
+    template.Must(template.New("todos").Parse(tmpl)).Execute(w, data)
+}
+
+func addHandler(w http.ResponseWriter, r *http.Request) {
+    if r.Method != "POST" {
+        http.Redirect(w, r, "/", http.StatusSeeOther)
+        return
+    }
+    
+    mutex.Lock()
+    task := r.FormValue("task")
+    todos = append(todos, Todo{ID: nextID, Task: task})
+    nextID++
+    mutex.Unlock()
+    
+    http.Redirect(w, r, "/", http.StatusSeeOther)
+}
+
+func toggleHandler(w http.ResponseWriter, r *http.Request) {
+    idStr := r.URL.Path[len("/toggle/"):]
+    id, _ := strconv.Atoi(idStr)
+    
+    mutex.Lock()
+    for i := range todos {
+        if todos[i].ID == id {
+            todos[i].Done = !todos[i].Done
+            break
+        }
+    }
+    mutex.Unlock()
+    
+    http.Redirect(w, r, "/", http.StatusSeeOther)
+}
+
+func deleteHandler(w http.ResponseWriter, r *http.Request) {
+    idStr := r.URL.Path[len("/delete/"):]
+    id, _ := strconv.Atoi(idStr)
+    
+    mutex.Lock()
+    for i := range todos {
+        if todos[i].ID == id {
+            todos = append(todos[:i], todos[i+1:]...)
+            break
+        }
+    }
+    mutex.Unlock()
+    
+    http.Redirect(w, r, "/", http.StatusSeeOther)
+}package main
+
+import (
+    "fmt"
+    "html/template"
+    "net/http"
+    "strconv"
+)
+
+func main() {
+    http.HandleFunc("/", calculatorHandler)
+    http.HandleFunc("/calculate", calculateHandler)
+    fmt.Println("Server chal raha hai: http://localhost:8080")
+    http.ListenAndServe(":8080", nil)
+}
+
+func calculatorHandler(w http.ResponseWriter, r *http.Request) {
+    tmpl := `
+    <!DOCTYPE html>
+    <html>
+    <head><title>Go Calculator</title></head>
+    <body>
+        <h1>Calculator App</h1>
+        <form action="/calculate" method="post">
+            Number 1: <input type="number" name="num1" required><br><br>
+            Number 2: <input type="number" name="num2" required><br><br>
+            Operation: 
+            <select name="op">
+                <option value="+">+</option>
+                <option value="-">-</option>
+                <option value="*">×</option>
+                <option value="/">÷</option>
+            </select><br><br>
+            <input type="submit" value="Calculate">
+        </form>
+    </body>
+    </html>`
+    template.Must(template.New("calc").Parse(tmpl)).Execute(w, nil)
+}
+
+func calculateHandler(w http.ResponseWriter, r *http.Request) {
+    if r.Method != "POST" {
+        http.Redirect(w, r, "/", http.StatusSeeOther)
+        return
+    }
+    
+    num1, _ := strconv.ParseFloat(r.FormValue("num1"), 64)
+    num2, _ := strconv.ParseFloat(r.FormValue("num2"), 64)
+    op := r.FormValue("op")
+    
+    var result float64
+    switch op {
+    case "+": result = num1 + num2
+    case "-": result = num1 - num2
+    case "*": result = num1 * num2
+    case "/":
+        if num2 == 0 {
+            http.Error(w, "Division by zero!", http.StatusBadRequest)
+            return
+        }
+        result = num1 / num2
+    }
+    
+    fmt.Fprintf(w, `
+    <h1>Result: %.2f %s %.2f = %.2f</h1>
+    <a href="/">Naya calculation</a>`, num1, op, num2, result)
+}package main
+
+import "fmt"
+
+func isLeapYear(year int) bool {
+    return year%4 == 0 && (year%100 != 0 || year%400 == 0)
+}
+
+func main() {
+    var year int
+    fmt.Print("Enter a year: ")
+    fmt.Scanln(&year)
+
+    if isLeapYear(year) {
+        fmt.Printf("%d is a leap year.
+", year)
+    } else {
+        fmt.Printf("%d is not a leap year.
+", year)
+    }
+}package main
+
+import "fmt"
+
+func main() {
+    var operator string
+    fmt.Println("Enter operator: +, -, *, /")
+    fmt.Scan(&operator)
+
+    var num1, num2 float64
+    fmt.Println("Enter two numbers:")
+    fmt.Scan(&num1, &num2)
+
+    switch operator {
+    case "+":
+        fmt.Println(num1 + num2)
+    case "-":
+        fmt.Println(num1 - num2)
+    case "*":
+        fmt.Println(num1 * num2)
+    case "/":
+        fmt.Println(num1 / num2)
+    default:
+        fmt.Println("Invalid operator")
+    }
+}package main
+
+import (
+    "github.com/gin-gonic/gin"
+    "net/http"
+    "strconv"
+)
+
+type User struct {
+    ID   int    `json:"id"`
+    Name string `json:"name"`
+    Age  int    `json:"age"`
+}
+
+var users = []User{
+    {ID: 1, Name: "Amit", Age: 25},
+    {ID: 2, Name: "Priya", Age: 30},
+}
+
+func main() {
+    r := gin.Default()
+    
+    // GET /users - सभी users
+    r.GET("/users", getUsers)
+    
+    // GET /users/:id - specific user
+    r.GET("/users/:id", getUserByID)
+    
+    // POST /users - नया user add
+    r.POST("/users", createUser)
+    
+    // PUT /users/:id - update user
+    r.PUT("/users/:id", updateUser)
+    
+    // DELETE /users/:id - delete user
+    r.DELETE("/users/:id", deleteUser)
+    
+    r.Run(":8080")
+}
+
+func getUsers(c *gin.Context) {
+    c.IndentedJSON(http.StatusOK, users)
+}
+
+func getUserByID(c *gin.Context) {
+    id, _ := strconv.Atoi(c.Param("id"))
+    for _, user := range users {
+        if user.ID == id {
+            c.IndentedJSON(http.StatusOK, user)
+            return
+        }
+    }
+    c.JSON(http.StatusNotFound, gin.H{"error": "User not found"})
+}
+
+func createUser(c *gin.Context) {
+    var newUser User
+    if err := c.ShouldBindJSON(&newUser); err != nil {
+        c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+        return
+    }
+    newUser.ID = len(users) + 1
+    users = append(users, newUser)
+    c.JSON(http.StatusCreated, newUser)
+}
+
+func updateUser(c *gin.Context) {
+    id, _ := strconv.Atoi(c.Param("id"))
+    var updatedUser User
+    
+    if err := c.ShouldBindJSON(&updatedUser); err != nil {
+        c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+        return
+    }
+    
+    for i, user := range users {
+        if user.ID == id {
+            updatedUser.ID = id
+            users[i] = updatedUser
+            c.JSON(http.StatusOK, updatedUser)
+            return
+        }
+    }
+    c.JSON(http.StatusNotFound, gin.H{"error": "User not found"})
+}
+
+func deleteUser(c *gin.Context) {
+    id, _ := strconv.Atoi(c.Param("id"))
+    for i, user := range users {
+        if user.ID == id {
+            users = append(users[:i], users[i+1:]...)
+            c.JSON(http.StatusOK, gin.H{"message": "User deleted"})
+            return
+        }
+    }
+    c.JSON(http.StatusNotFound, gin.H{"error": "User not found"})
+}package main
+
+import (
+    "fmt"
+    "html/template"
+    "net/http"
+    "strconv"
+    "sync"
+)
+
+type Todo struct {
+    ID   int
+    Task string
+    Done bool
+}
+
+var (
+    todos   []Todo
+    nextID  = 1
+    mutex   sync.Mutex
+)
+
+func main() {
+    http.HandleFunc("/", homeHandler)
+    http.HandleFunc("/add", addHandler)
+    http.HandleFunc("/toggle/", toggleHandler)
+    http.HandleFunc("/delete/", deleteHandler)
+    
+    fmt.Println("Todo App chal raha hai: http://localhost:8080")
+    http.ListenAndServe(":8080", nil)
+}
+
+func homeHandler(w http.ResponseWriter, r *http.Request) {
+    tmpl := `
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <title>Go Todo App</title>
+        <style>body{font-family:Arial} input{padding:10px} button{padding:8px 15px}</style>
+    </head>
+    <body>
+        <h1>Todo List</h1>
+        <form action="/add" method="post">
+            <input type="text" name="task" placeholder="Naya task likho..." required>
+            <button type="submit">Add</button>
+        </form>
+        <ul>
+        {{range .}}
+            <li>
+                <input type="checkbox" {{if .Done}}checked{{end}} 
+                       onclick="location.href='/toggle/{{.ID}}'">
+                <span style="text-decoration:{{if .Done}}line-through{{end}};">{{.Task}}</span>
+                <a href="/delete/{{.ID}}" style="color:red;">Delete</a>
+            </li>
+        {{end}}
+        </ul>
+    </body>
+    </html>`
+    
+    mutex.Lock()
+    data := todos
+    mutex.Unlock()
+    
+    template.Must(template.New("todos").Parse(tmpl)).Execute(w, data)
+}
+
+func addHandler(w http.ResponseWriter, r *http.Request) {
+    if r.Method != "POST" {
+        http.Redirect(w, r, "/", http.StatusSeeOther)
+        return
+    }
+    
+    mutex.Lock()
+    task := r.FormValue("task")
+    todos = append(todos, Todo{ID: nextID, Task: task})
+    nextID++
+    mutex.Unlock()
+    
+    http.Redirect(w, r, "/", http.StatusSeeOther)
+}
+
+func toggleHandler(w http.ResponseWriter, r *http.Request) {
+    idStr := r.URL.Path[len("/toggle/"):]
+    id, _ := strconv.Atoi(idStr)
+    
+    mutex.Lock()
+    for i := range todos {
+        if todos[i].ID == id {
+            todos[i].Done = !todos[i].Done
+            break
+        }
+    }
+    mutex.Unlock()
+    
+    http.Redirect(w, r, "/", http.StatusSeeOther)
+}
+
+func deleteHandler(w http.ResponseWriter, r *http.Request) {
+    idStr := r.URL.Path[len("/delete/"):]
+    id, _ := strconv.Atoi(idStr)
+    
+    mutex.Lock()
+    for i := range todos {
+        if todos[i].ID == id {
+            todos = append(todos[:i], todos[i+1:]...)
+            break
+        }
+    }
+    mutex.Unlock()
+    
+    http.Redirect(w, r, "/", http.StatusSeeOther)
+}package main
+
+import (
+    "fmt"
+    "html/template"
+    "net/http"
+    "strconv"
+)
+
+func main() {
+    http.HandleFunc("/", calculatorHandler)
+    http.HandleFunc("/calculate", calculateHandler)
+    fmt.Println("Server chal raha hai: http://localhost:8080")
+    http.ListenAndServe(":8080", nil)
+}
+
+func calculatorHandler(w http.ResponseWriter, r *http.Request) {
+    tmpl := `
+    <!DOCTYPE html>
+    <html>
+    <head><title>Go Calculator</title></head>
+    <body>
+        <h1>Calculator App</h1>
+        <form action="/calculate" method="post">
+            Number 1: <input type="number" name="num1" required><br><br>
+            Number 2: <input type="number" name="num2" required><br><br>
+            Operation: 
+            <select name="op">
+                <option value="+">+</option>
+                <option value="-">-</option>
+                <option value="*">×</option>
+                <option value="/">÷</option>
+            </select><br><br>
+            <input type="submit" value="Calculate">
+        </form>
+    </body>
+    </html>`
+    template.Must(template.New("calc").Parse(tmpl)).Execute(w, nil)
+}
+
+func calculateHandler(w http.ResponseWriter, r *http.Request) {
+    if r.Method != "POST" {
+        http.Redirect(w, r, "/", http.StatusSeeOther)
+        return
+    }
+    
+    num1, _ := strconv.ParseFloat(r.FormValue("num1"), 64)
+    num2, _ := strconv.ParseFloat(r.FormValue("num2"), 64)
+    op := r.FormValue("op")
+    
+    var result float64
+    switch op {
+    case "+": result = num1 + num2
+    case "-": result = num1 - num2
+    case "*": result = num1 * num2
+    case "/":
+        if num2 == 0 {
+            http.Error(w, "Division by zero!", http.StatusBadRequest)
+            return
+        }
+        result = num1 / num2
+    }
+    
+    fmt.Fprintf(w, `
+    <h1>Result: %.2f %s %.2f = %.2f</h1>
+    <a href="/">Naya calculation</a>`, num1, op, num2, result)
+}package main
+
+import "fmt"
+
+func isLeapYear(year int) bool {
+    return year%4 == 0 && (year%100 != 0 || year%400 == 0)
+}
+
+func main() {
+    var year int
+    fmt.Print("Enter a year: ")
+    fmt.Scanln(&year)
+
+    if isLeapYear(year) {
+        fmt.Printf("%d is a leap year.
+", year)
+    } else {
+        fmt.Printf("%d is not a leap year.
+", year)
+    }
+}package main
+
+import (
+    "github.com/gin-gonic/gin"
+    "net/http"
+    "strconv"
+)
+
+type User struct {
+    ID   int    `json:"id"`
+    Name string `json:"name"`
+    Age  int    `json:"age"`
+}
+
+var users = []User{
+    {ID: 1, Name: "Amit", Age: 25},
+    {ID: 2, Name: "Priya", Age: 30},
+}
+
+func main() {
+    r := gin.Default()
+    
+    // GET /users - सभी users
+    r.GET("/users", getUsers)
+    
+    // GET /users/:id - specific user
+    r.GET("/users/:id", getUserByID)
+    
+    // POST /users - नया user add
+    r.POST("/users", createUser)
+    
+    // PUT /users/:id - update user
+    r.PUT("/users/:id", updateUser)
+    
+    // DELETE /users/:id - delete user
+    r.DELETE("/users/:id", deleteUser)
+    
+    r.Run(":8080")
+}
+
+func getUsers(c *gin.Context) {
+    c.IndentedJSON(http.StatusOK, users)
+}
+
+func getUserByID(c *gin.Context) {
+    id, _ := strconv.Atoi(c.Param("id"))
+    for _, user := range users {
+        if user.ID == id {
+            c.IndentedJSON(http.StatusOK, user)
+            return
+        }
+    }
+    c.JSON(http.StatusNotFound, gin.H{"error": "User not found"})
+}
+
+func createUser(c *gin.Context) {
+    var newUser User
+    if err := c.ShouldBindJSON(&newUser); err != nil {
+        c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+        return
+    }
+    newUser.ID = len(users) + 1
+    users = append(users, newUser)
+    c.JSON(http.StatusCreated, newUser)
+}
+
+func updateUser(c *gin.Context) {
+    id, _ := strconv.Atoi(c.Param("id"))
+    var updatedUser User
+    
+    if err := c.ShouldBindJSON(&updatedUser); err != nil {
+        c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+        return
+    }
+    
+    for i, user := range users {
+        if user.ID == id {
+            updatedUser.ID = id
+            users[i] = updatedUser
+            c.JSON(http.StatusOK, updatedUser)
+            return
+        }
+    }
+    c.JSON(http.StatusNotFound, gin.H{"error": "User not found"})
+}
+
+func deleteUser(c *gin.Context) {
+    id, _ := strconv.Atoi(c.Param("id"))
+    for i, user := range users {
+        if user.ID == id {
+            users = append(users[:i], users[i+1:]...)
+            c.JSON(http.StatusOK, gin.H{"message": "User deleted"})
+            return
+        }
+    }
+    c.JSON(http.StatusNotFound, gin.H{"error": "User not found"})
+}package main
+
+import (
+    "fmt"
+    "html/template"
+    "net/http"
+    "strconv"
+    "sync"
+)
+
+type Todo struct {
+    ID   int
+    Task string
+    Done bool
+}
+
+var (
+    todos   []Todo
+    nextID  = 1
+    mutex   sync.Mutex
+)
+
+func main() {
+    http.HandleFunc("/", homeHandler)
+    http.HandleFunc("/add", addHandler)
+    http.HandleFunc("/toggle/", toggleHandler)
+    http.HandleFunc("/delete/", deleteHandler)
+    
+    fmt.Println("Todo App chal raha hai: http://localhost:8080")
+    http.ListenAndServe(":8080", nil)
+}
+
+func homeHandler(w http.ResponseWriter, r *http.Request) {
+    tmpl := `
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <title>Go Todo App</title>
+        <style>body{font-family:Arial} input{padding:10px} button{padding:8px 15px}</style>
+    </head>
+    <body>
+        <h1>Todo List</h1>
+        <form action="/add" method="post">
+            <input type="text" name="task" placeholder="Naya task likho..." required>
+            <button type="submit">Add</button>
+        </form>
+        <ul>
+        {{range .}}
+            <li>
+                <input type="checkbox" {{if .Done}}checked{{end}} 
+                       onclick="location.href='/toggle/{{.ID}}'">
+                <span style="text-decoration:{{if .Done}}line-through{{end}};">{{.Task}}</span>
+                <a href="/delete/{{.ID}}" style="color:red;">Delete</a>
+            </li>
+        {{end}}
+        </ul>
+    </body>
+    </html>`
+    
+    mutex.Lock()
+    data := todos
+    mutex.Unlock()
+    
+    template.Must(template.New("todos").Parse(tmpl)).Execute(w, data)
+}
+
+func addHandler(w http.ResponseWriter, r *http.Request) {
+    if r.Method != "POST" {
+        http.Redirect(w, r, "/", http.StatusSeeOther)
+        return
+    }
+    
+    mutex.Lock()
+    task := r.FormValue("task")
+    todos = append(todos, Todo{ID: nextID, Task: task})
+    nextID++
+    mutex.Unlock()
+    
+    http.Redirect(w, r, "/", http.StatusSeeOther)
+}
+
+func toggleHandler(w http.ResponseWriter, r *http.Request) {
+    idStr := r.URL.Path[len("/toggle/"):]
+    id, _ := strconv.Atoi(idStr)
+    
+    mutex.Lock()
+    for i := range todos {
+        if todos[i].ID == id {
+            todos[i].Done = !todos[i].Done
+            break
+        }
+    }
+    mutex.Unlock()
+    
+    http.Redirect(w, r, "/", http.StatusSeeOther)
+}
+
+func deleteHandler(w http.ResponseWriter, r *http.Request) {
+    idStr := r.URL.Path[len("/delete/"):]
+    id, _ := strconv.Atoi(idStr)
+    
+    mutex.Lock()
+    for i := range todos {
+        if todos[i].ID == id {
+            todos = append(todos[:i], todos[i+1:]...)
+            break
+        }
+    }
+    mutex.Unlock()
+    
+    http.Redirect(w, r, "/", http.StatusSeeOther)
+}package main
+
+import (
+    "fmt"
+    "html/template"
+    "net/http"
+    "strconv"
+)
+
+func main() {
+    http.HandleFunc("/", calculatorHandler)
+    http.HandleFunc("/calculate", calculateHandler)
+    fmt.Println("Server chal raha hai: http://localhost:8080")
+    http.ListenAndServe(":8080", nil)
+}
+
+func calculatorHandler(w http.ResponseWriter, r *http.Request) {
+    tmpl := `
+    <!DOCTYPE html>
+    <html>
+    <head><title>Go Calculator</title></head>
+    <body>
+        <h1>Calculator App</h1>
+        <form action="/calculate" method="post">
+            Number 1: <input type="number" name="num1" required><br><br>
+            Number 2: <input type="number" name="num2" required><br><br>
+            Operation: 
+            <select name="op">
+                <option value="+">+</option>
+                <option value="-">-</option>
+                <option value="*">×</option>
+                <option value="/">÷</option>
+            </select><br><br>
+            <input type="submit" value="Calculate">
+        </form>
+    </body>
+    </html>`
+    template.Must(template.New("calc").Parse(tmpl)).Execute(w, nil)
+}
+
+func calculateHandler(w http.ResponseWriter, r *http.Request) {
+    if r.Method != "POST" {
+        http.Redirect(w, r, "/", http.StatusSeeOther)
+        return
+    }
+    
+    num1, _ := strconv.ParseFloat(r.FormValue("num1"), 64)
+    num2, _ := strconv.ParseFloat(r.FormValue("num2"), 64)
+    op := r.FormValue("op")
+    
+    var result float64
+    switch op {
+    case "+": result = num1 + num2
+    case "-": result = num1 - num2
+    case "*": result = num1 * num2
+    case "/":
+        if num2 == 0 {
+            http.Error(w, "Division by zero!", http.StatusBadRequest)
+            return
+        }
+        result = num1 / num2
+    }
+    
+    fmt.Fprintf(w, `
+    <h1>Result: %.2f %s %.2f = %.2f</h1>
+    <a href="/">Naya calculation</a>`, num1, op, num2, result)
+}package main
+
+import "fmt"
+
+func isLeapYear(year int) bool {
+    return year%4 == 0 && (year%100 != 0 || year%400 == 0)
+}
+
+func main() {
+    var year int
+    fmt.Print("Enter a year: ")
+    fmt.Scanln(&year)
+
+    if isLeapYear(year) {
+        fmt.Printf("%d is a leap year.
+", year)
+    } else {
+        fmt.Printf("%d is not a leap year.
+", year)
+    }
+}package main
+
+import "fmt"
+
+func main() {
+    var operator string
+    fmt.Println("Enter operator: +, -, *, /")
+    fmt.Scan(&operator)
+
+    var num1, num2 float64
+    fmt.Println("Enter two numbers:")
+    fmt.Scan(&num1, &num2)
+
+    switch operator {
+    case "+":
+        fmt.Println(num1 + num2)
+    case "-":
+        fmt.Println(num1 - num2)
+    case "*":
+        fmt.Println(num1 * num2)
+    case "/":
+        fmt.Println(num1 / num2)
+    default:
+        fmt.Println("Invalid operator")
+    }
+}package main
+
+import (
+    "github.com/gin-gonic/gin"
+    "net/http"
+    "strconv"
+)
+
+type User struct {
+    ID   int    `json:"id"`
+    Name string `json:"name"`
+    Age  int    `json:"age"`
+}
+
+var users = []User{
+    {ID: 1, Name: "Amit", Age: 25},
+    {ID: 2, Name: "Priya", Age: 30},
+}
+
+func main() {
+    r := gin.Default()
+    
+    // GET /users - सभी users
+    r.GET("/users", getUsers)
+    
+    // GET /users/:id - specific user
+    r.GET("/users/:id", getUserByID)
+    
+    // POST /users - नया user add
+    r.POST("/users", createUser)
+    
+    // PUT /users/:id - update user
+    r.PUT("/users/:id", updateUser)
+    
+    // DELETE /users/:id - delete user
+    r.DELETE("/users/:id", deleteUser)
+    
+    r.Run(":8080")
+}
+
+func getUsers(c *gin.Context) {
+    c.IndentedJSON(http.StatusOK, users)
+}
+
+func getUserByID(c *gin.Context) {
+    id, _ := strconv.Atoi(c.Param("id"))
+    for _, user := range users {
+        if user.ID == id {
+            c.IndentedJSON(http.StatusOK, user)
+            return
+        }
+    }
+    c.JSON(http.StatusNotFound, gin.H{"error": "User not found"})
+}
+
+func createUser(c *gin.Context) {
+    var newUser User
+    if err := c.ShouldBindJSON(&newUser); err != nil {
+        c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+        return
+    }
+    newUser.ID = len(users) + 1
+    users = append(users, newUser)
+    c.JSON(http.StatusCreated, newUser)
+}
+
+func updateUser(c *gin.Context) {
+    id, _ := strconv.Atoi(c.Param("id"))
+    var updatedUser User
+    
+    if err := c.ShouldBindJSON(&updatedUser); err != nil {
+        c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+        return
+    }
+    
+    for i, user := range users {
+        if user.ID == id {
+            updatedUser.ID = id
+            users[i] = updatedUser
+            c.JSON(http.StatusOK, updatedUser)
+            return
+        }
+    }
+    c.JSON(http.StatusNotFound, gin.H{"error": "User not found"})
+}
+
+func deleteUser(c *gin.Context) {
+    id, _ := strconv.Atoi(c.Param("id"))
+    for i, user := range users {
+        if user.ID == id {
+            users = append(users[:i], users[i+1:]...)
+            c.JSON(http.StatusOK, gin.H{"message": "User deleted"})
+            return
+        }
+    }
+    c.JSON(http.StatusNotFound, gin.H{"error": "User not found"})
+}package main
+
+import (
+    "fmt"
+    "html/template"
+    "net/http"
+    "strconv"
+    "sync"
+)
+
+type Todo struct {
+    ID   int
+    Task string
+    Done bool
+}
+
+var (
+    todos   []Todo
+    nextID  = 1
+    mutex   sync.Mutex
+)
+
+func main() {
+    http.HandleFunc("/", homeHandler)
+    http.HandleFunc("/add", addHandler)
+    http.HandleFunc("/toggle/", toggleHandler)
+    http.HandleFunc("/delete/", deleteHandler)
+    
+    fmt.Println("Todo App chal raha hai: http://localhost:8080")
+    http.ListenAndServe(":8080", nil)
+}
+
+func homeHandler(w http.ResponseWriter, r *http.Request) {
+    tmpl := `
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <title>Go Todo App</title>
+        <style>body{font-family:Arial} input{padding:10px} button{padding:8px 15px}</style>
+    </head>
+    <body>
+        <h1>Todo List</h1>
+        <form action="/add" method="post">
+            <input type="text" name="task" placeholder="Naya task likho..." required>
+            <button type="submit">Add</button>
+        </form>
+        <ul>
+        {{range .}}
+            <li>
+                <input type="checkbox" {{if .Done}}checked{{end}} 
+                       onclick="location.href='/toggle/{{.ID}}'">
+                <span style="text-decoration:{{if .Done}}line-through{{end}};">{{.Task}}</span>
+                <a href="/delete/{{.ID}}" style="color:red;">Delete</a>
+            </li>
+        {{end}}
+        </ul>
+    </body>
+    </html>`
+    
+    mutex.Lock()
+    data := todos
+    mutex.Unlock()
+    
+    template.Must(template.New("todos").Parse(tmpl)).Execute(w, data)
+}
+
+func addHandler(w http.ResponseWriter, r *http.Request) {
+    if r.Method != "POST" {
+        http.Redirect(w, r, "/", http.StatusSeeOther)
+        return
+    }
+    
+    mutex.Lock()
+    task := r.FormValue("task")
+    todos = append(todos, Todo{ID: nextID, Task: task})
+    nextID++
+    mutex.Unlock()
+    
+    http.Redirect(w, r, "/", http.StatusSeeOther)
+}
+
+func toggleHandler(w http.ResponseWriter, r *http.Request) {
+    idStr := r.URL.Path[len("/toggle/"):]
+    id, _ := strconv.Atoi(idStr)
+    
+    mutex.Lock()
+    for i := range todos {
+        if todos[i].ID == id {
+            todos[i].Done = !todos[i].Done
+            break
+        }
+    }
+    mutex.Unlock()
+    
+    http.Redirect(w, r, "/", http.StatusSeeOther)
+}
+
+func deleteHandler(w http.ResponseWriter, r *http.Request) {
+    idStr := r.URL.Path[len("/delete/"):]
+    id, _ := strconv.Atoi(idStr)
+    
+    mutex.Lock()
+    for i := range todos {
+        if todos[i].ID == id {
+            todos = append(todos[:i], todos[i+1:]...)
+            break
+        }
+    }
+    mutex.Unlock()
+    
+    http.Redirect(w, r, "/", http.StatusSeeOther)
+}package main
+
+import (
+    "fmt"
+    "html/template"
+    "net/http"
+    "strconv"
+)
+
+func main() {
+    http.HandleFunc("/", calculatorHandler)
+    http.HandleFunc("/calculate", calculateHandler)
+    fmt.Println("Server chal raha hai: http://localhost:8080")
+    http.ListenAndServe(":8080", nil)
+}
+
+func calculatorHandler(w http.ResponseWriter, r *http.Request) {
+    tmpl := `
+    <!DOCTYPE html>
+    <html>
+    <head><title>Go Calculator</title></head>
+    <body>
+        <h1>Calculator App</h1>
+        <form action="/calculate" method="post">
+            Number 1: <input type="number" name="num1" required><br><br>
+            Number 2: <input type="number" name="num2" required><br><br>
+            Operation: 
+            <select name="op">
+                <option value="+">+</option>
+                <option value="-">-</option>
+                <option value="*">×</option>
+                <option value="/">÷</option>
+            </select><br><br>
+            <input type="submit" value="Calculate">
+        </form>
+    </body>
+    </html>`
+    template.Must(template.New("calc").Parse(tmpl)).Execute(w, nil)
+}
+
+func calculateHandler(w http.ResponseWriter, r *http.Request) {
+    if r.Method != "POST" {
+        http.Redirect(w, r, "/", http.StatusSeeOther)
+        return
+    }
+    
+    num1, _ := strconv.ParseFloat(r.FormValue("num1"), 64)
+    num2, _ := strconv.ParseFloat(r.FormValue("num2"), 64)
+    op := r.FormValue("op")
+    
+    var result float64
+    switch op {
+    case "+": result = num1 + num2
+    case "-": result = num1 - num2
+    case "*": result = num1 * num2
+    case "/":
+        if num2 == 0 {
+            http.Error(w, "Division by zero!", http.StatusBadRequest)
+            return
+        }
+        result = num1 / num2
+    }
+    
+    fmt.Fprintf(w, `
+    <h1>Result: %.2f %s %.2f = %.2f</h1>
+    <a href="/">Naya calculation</a>`, num1, op, num2, result)
+}package main
+
+import "fmt"
+
+func isLeapYear(year int) bool {
+    return year%4 == 0 && (year%100 != 0 || year%400 == 0)
+}
+
+func main() {
+    var year int
+    fmt.Print("Enter a year: ")
+    fmt.Scanln(&year)
+
+    if isLeapYear(year) {
+        fmt.Printf("%d is a leap year.
+", year)
+    } else {
+        fmt.Printf("%d is not a leap year.
+", year)
+    }
+}package main
+
+import "fmt"
+
+func main() {
+    var operator string
+    fmt.Println("Enter operator: +, -, *, /")
+    fmt.Scan(&operator)
+
+    var num1, num2 float64
+    fmt.Println("Enter two numbers:")
+    fmt.Scan(&num1, &num2)
+
+    switch operator {
+    case "+":
+        fmt.Println(num1 + num2)
+    case "-":
+        fmt.Println(num1 - num2)
+    case "*":
+        fmt.Println(num1 * num2)
+    case "/":
+        fmt.Println(num1 / num2)
+    default:
+        fmt.Println("Invalid operator")
+    }
+}package main
+
+import (
+    "github.com/gin-gonic/gin"
+    "net/http"
+    "strconv"
+)
+
+type User struct {
+    ID   int    `json:"id"`
+    Name string `json:"name"`
+    Age  int    `json:"age"`
+}
+
+var users = []User{
+    {ID: 1, Name: "Amit", Age: 25},
+    {ID: 2, Name: "Priya", Age: 30},
+}
+
+func main() {
+    r := gin.Default()
+    
+    // GET /users - सभी users
+    r.GET("/users", getUsers)
+    
+    // GET /users/:id - specific user
+    r.GET("/users/:id", getUserByID)
+    
+    // POST /users - नया user add
+    r.POST("/users", createUser)
+    
+    // PUT /users/:id - update user
+    r.PUT("/users/:id", updateUser)
+    
+    // DELETE /users/:id - delete user
+    r.DELETE("/users/:id", deleteUser)
+    
+    r.Run(":8080")
+}
+
+func getUsers(c *gin.Context) {
+    c.IndentedJSON(http.StatusOK, users)
+}
+
+func getUserByID(c *gin.Context) {
+    id, _ := strconv.Atoi(c.Param("id"))
+    for _, user := range users {
+        if user.ID == id {
+            c.IndentedJSON(http.StatusOK, user)
+            return
+        }
+    }
+    c.JSON(http.StatusNotFound, gin.H{"error": "User not found"})
+}
+
+func createUser(c *gin.Context) {
+    var newUser User
+    if err := c.ShouldBindJSON(&newUser); err != nil {
+        c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+        return
+    }
+    newUser.ID = len(users) + 1
+    users = append(users, newUser)
+    c.JSON(http.StatusCreated, newUser)
+}
+
+func updateUser(c *gin.Context) {
+    id, _ := strconv.Atoi(c.Param("id"))
+    var updatedUser User
+    
+    if err := c.ShouldBindJSON(&updatedUser); err != nil {
+        c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+        return
+    }
+    
+    for i, user := range users {
+        if user.ID == id {
+            updatedUser.ID = id
+            users[i] = updatedUser
+            c.JSON(http.StatusOK, updatedUser)
+            return
+        }
+    }
+    c.JSON(http.StatusNotFound, gin.H{"error": "User not found"})
+}
+
+func deleteUser(c *gin.Context) {
+    id, _ := strconv.Atoi(c.Param("id"))
+    for i, user := range users {
+        if user.ID == id {
+            users = append(users[:i], users[i+1:]...)
+            c.JSON(http.StatusOK, gin.H{"message": "User deleted"})
+            return
+        }
+    }
+    c.JSON(http.StatusNotFound, gin.H{"error": "User not found"})
+}package main
+
+import (
+    "fmt"
+    "html/template"
+    "net/http"
+    "strconv"
+    "sync"
+)
+
+type Todo struct {
+    ID   int
+    Task string
+    Done bool
+}
+
+var (
+    todos   []Todo
+    nextID  = 1
+    mutex   sync.Mutex
+)
+
+func main() {
+    http.HandleFunc("/", homeHandler)
+    http.HandleFunc("/add", addHandler)
+    http.HandleFunc("/toggle/", toggleHandler)
+    http.HandleFunc("/delete/", deleteHandler)
+    
+    fmt.Println("Todo App chal raha hai: http://localhost:8080")
+    http.ListenAndServe(":8080", nil)
+}
+
+func homeHandler(w http.ResponseWriter, r *http.Request) {
+    tmpl := `
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <title>Go Todo App</title>
+        <style>body{font-family:Arial} input{padding:10px} button{padding:8px 15px}</style>
+    </head>
+    <body>
+        <h1>Todo List</h1>
+        <form action="/add" method="post">
+            <input type="text" name="task" placeholder="Naya task likho..." required>
+            <button type="submit">Add</button>
+        </form>
+        <ul>
+        {{range .}}
+            <li>
+                <input type="checkbox" {{if .Done}}checked{{end}} 
+                       onclick="location.href='/toggle/{{.ID}}'">
+                <span style="text-decoration:{{if .Done}}line-through{{end}};">{{.Task}}</span>
+                <a href="/delete/{{.ID}}" style="color:red;">Delete</a>
+            </li>
+        {{end}}
+        </ul>
+    </body>
+    </html>`
+    
+    mutex.Lock()
+    data := todos
+    mutex.Unlock()
+    
+    template.Must(template.New("todos").Parse(tmpl)).Execute(w, data)
+}
+
+func addHandler(w http.ResponseWriter, r *http.Request) {
+    if r.Method != "POST" {
+        http.Redirect(w, r, "/", http.StatusSeeOther)
+        return
+    }
+    
+    mutex.Lock()
+    task := r.FormValue("task")
+    todos = append(todos, Todo{ID: nextID, Task: task})
+    nextID++
+    mutex.Unlock()
+    
+    http.Redirect(w, r, "/", http.StatusSeeOther)
+}
+
+func toggleHandler(w http.ResponseWriter, r *http.Request) {
+    idStr := r.URL.Path[len("/toggle/"):]
+    id, _ := strconv.Atoi(idStr)
+    
+    mutex.Lock()
+    for i := range todos {
+        if todos[i].ID == id {
+            todos[i].Done = !todos[i].Done
+            break
+        }
+    }
+    mutex.Unlock()
+    
+    http.Redirect(w, r, "/", http.StatusSeeOther)
+}
+
+func deleteHandler(w http.ResponseWriter, r *http.Request) {
+    idStr := r.URL.Path[len("/delete/"):]
+    id, _ := strconv.Atoi(idStr)
+    
+    mutex.Lock()
+    for i := range todos {
+        if todos[i].ID == id {
+            todos = append(todos[:i], todos[i+1:]...)
+            break
+        }
+    }
+    mutex.Unlock()
+    
+    http.Redirect(w, r, "/", http.StatusSeeOther)
+}package main
+
+import (
+    "fmt"
+    "html/template"
+    "net/http"
+    "strconv"
+)
+
+func main() {
+    http.HandleFunc("/", calculatorHandler)
+    http.HandleFunc("/calculate", calculateHandler)
+    fmt.Println("Server chal raha hai: http://localhost:8080")
+    http.ListenAndServe(":8080", nil)
+}
+
+func calculatorHandler(w http.ResponseWriter, r *http.Request) {
+    tmpl := `
+    <!DOCTYPE html>
+    <html>
+    <head><title>Go Calculator</title></head>
+    <body>
+        <h1>Calculator App</h1>
+        <form action="/calculate" method="post">
+            Number 1: <input type="number" name="num1" required><br><br>
+            Number 2: <input type="number" name="num2" required><br><br>
+            Operation: 
+            <select name="op">
+                <option value="+">+</option>
+                <option value="-">-</option>
+                <option value="*">×</option>
+                <option value="/">÷</option>
+            </select><br><br>
+            <input type="submit" value="Calculate">
+        </form>
+    </body>
+    </html>`
+    template.Must(template.New("calc").Parse(tmpl)).Execute(w, nil)
+}
+
+func calculateHandler(w http.ResponseWriter, r *http.Request) {
+    if r.Method != "POST" {
+        http.Redirect(w, r, "/", http.StatusSeeOther)
+        return
+    }
+    
+    num1, _ := strconv.ParseFloat(r.FormValue("num1"), 64)
+    num2, _ := strconv.ParseFloat(r.FormValue("num2"), 64)
+    op := r.FormValue("op")
+    
+    var result float64
+    switch op {
+    case "+": result = num1 + num2
+    case "-": result = num1 - num2
+    case "*": result = num1 * num2
+    case "/":
+        if num2 == 0 {
+            http.Error(w, "Division by zero!", http.StatusBadRequest)
+            return
+        }
+        result = num1 / num2
+    }
+    
+    fmt.Fprintf(w, `
+    <h1>Result: %.2f %s %.2f = %.2f</h1>
+    <a href="/">Naya calculation</a>`, num1, op, num2, result)
+}package main
+
+import "fmt"
+
+func isLeapYear(year int) bool {
+    return year%4 == 0 && (year%100 != 0 || year%400 == 0)
+}
+
+func main() {
+    var year int
+    fmt.Print("Enter a year: ")
+    fmt.Scanln(&year)
+
+    if isLeapYear(year) {
+        fmt.Printf("%d is a leap year.
+", year)
+    } else {
+        fmt.Printf("%d is not a leap year.
+", year)
+    }
+}package main
+
+import "fmt"
+
+func main() {
+    var operator string
+    fmt.Println("Enter operator: +, -, *, /")
+    fmt.Scan(&operator)
+
+    var num1, num2 float64
+    fmt.Println("Enter two numbers:")
+    fmt.Scan(&num1, &num2)
+
+    switch operator {
+    case "+":
+        fmt.Println(num1 + num2)
+    case "-":
+        fmt.Println(num1 - num2)
+    case "*":
+        fmt.Println(num1 * num2)
+    case "/":
+        fmt.Println(num1 / num2)
+    default:
+        fmt.Println("Invalid operator")
+    }
+}package main
+
+import (
+    "github.com/gin-gonic/gin"
+    "net/http"
+    "strconv"
+)
+
+type User struct {
+    ID   int    `json:"id"`
+    Name string `json:"name"`
+    Age  int    `json:"age"`
+}
+
+var users = []User{
+    {ID: 1, Name: "Amit", Age: 25},
+    {ID: 2, Name: "Priya", Age: 30},
+}
+
+func main() {
+    r := gin.Default()
+    
+    // GET /users - सभी users
+    r.GET("/users", getUsers)
+    
+    // GET /users/:id - specific user
+    r.GET("/users/:id", getUserByID)
+    
+    // POST /users - नया user add
+    r.POST("/users", createUser)
+    
+    // PUT /users/:id - update user
+    r.PUT("/users/:id", updateUser)
+    
+    // DELETE /users/:id - delete user
+    r.DELETE("/users/:id", deleteUser)
+    
+    r.Run(":8080")
+}
+
+func getUsers(c *gin.Context) {
+    c.IndentedJSON(http.StatusOK, users)
+}
+
+func getUserByID(c *gin.Context) {
+    id, _ := strconv.Atoi(c.Param("id"))
+    for _, user := range users {
+        if user.ID == id {
+            c.IndentedJSON(http.StatusOK, user)
+            return
+        }
+    }
+    c.JSON(http.StatusNotFound, gin.H{"error": "User not found"})
+}
+
+func createUser(c *gin.Context) {
+    var newUser User
+    if err := c.ShouldBindJSON(&newUser); err != nil {
+        c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+        return
+    }
+    newUser.ID = len(users) + 1
+    users = append(users, newUser)
+    c.JSON(http.StatusCreated, newUser)
+}
+
+func updateUser(c *gin.Context) {
+    id, _ := strconv.Atoi(c.Param("id"))
+    var updatedUser User
+    
+    if err := c.ShouldBindJSON(&updatedUser); err != nil {
+        c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+        return
+    }
+    
+    for i, user := range users {
+        if user.ID == id {
+            updatedUser.ID = id
+            users[i] = updatedUser
+            c.JSON(http.StatusOK, updatedUser)
+            return
+        }
+    }
+    c.JSON(http.StatusNotFound, gin.H{"error": "User not found"})
+}
+
+func deleteUser(c *gin.Context) {
+    id, _ := strconv.Atoi(c.Param("id"))
+    for i, user := range users {
+        if user.ID == id {
+            users = append(users[:i], users[i+1:]...)
+            c.JSON(http.StatusOK, gin.H{"message": "User deleted"})
+            return
+        }
+    }
+    c.JSON(http.StatusNotFound, gin.H{"error": "User not found"})
+}package main
+
+import (
+    "fmt"
+    "html/template"
+    "net/http"
+    "strconv"
+    "sync"
+)
+
+type Todo struct {
+    ID   int
+    Task string
+    Done bool
+}
+
+var (
+    todos   []Todo
+    nextID  = 1
+    mutex   sync.Mutex
+)
+
+func main() {
+    http.HandleFunc("/", homeHandler)
+    http.HandleFunc("/add", addHandler)
+    http.HandleFunc("/toggle/", toggleHandler)
+    http.HandleFunc("/delete/", deleteHandler)
+    
+    fmt.Println("Todo App chal raha hai: http://localhost:8080")
+    http.ListenAndServe(":8080", nil)
+}
+
+func homeHandler(w http.ResponseWriter, r *http.Request) {
+    tmpl := `
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <title>Go Todo App</title>
+        <style>body{font-family:Arial} input{padding:10px} button{padding:8px 15px}</style>
+    </head>
+    <body>
+        <h1>Todo List</h1>
+        <form action="/add" method="post">
+            <input type="text" name="task" placeholder="Naya task likho..." required>
+            <button type="submit">Add</button>
+        </form>
+        <ul>
+        {{range .}}
+            <li>
+                <input type="checkbox" {{if .Done}}checked{{end}} 
+                       onclick="location.href='/toggle/{{.ID}}'">
+                <span style="text-decoration:{{if .Done}}line-through{{end}};">{{.Task}}</span>
+                <a href="/delete/{{.ID}}" style="color:red;">Delete</a>
+            </li>
+        {{end}}
+        </ul>
+    </body>
+    </html>`
+    
+    mutex.Lock()
+    data := todos
+    mutex.Unlock()
+    
+    template.Must(template.New("todos").Parse(tmpl)).Execute(w, data)
+}
+
+func addHandler(w http.ResponseWriter, r *http.Request) {
+    if r.Method != "POST" {
+        http.Redirect(w, r, "/", http.StatusSeeOther)
+        return
+    }
+    
+    mutex.Lock()
+    task := r.FormValue("task")
+    todos = append(todos, Todo{ID: nextID, Task: task})
+    nextID++
+    mutex.Unlock()
+    
+    http.Redirect(w, r, "/", http.StatusSeeOther)
+}
+
+func toggleHandler(w http.ResponseWriter, r *http.Request) {
+    idStr := r.URL.Path[len("/toggle/"):]
+    id, _ := strconv.Atoi(idStr)
+    
+    mutex.Lock()
+    for i := range todos {
+        if todos[i].ID == id {
+            todos[i].Done = !todos[i].Done
+            break
+        }
+    }
+    mutex.Unlock()
+    
+    http.Redirect(w, r, "/", http.StatusSeeOther)
+}
+
+func deleteHandler(w http.ResponseWriter, r *http.Request) {
+    idStr := r.URL.Path[len("/delete/"):]
+    id, _ := strconv.Atoi(idStr)
+    
+    mutex.Lock()
+    for i := range todos {
+        if todos[i].ID == id {
+            todos = append(todos[:i], todos[i+1:]...)
+            break
+        }
+    }
+    mutex.Unlock()
+    
+    http.Redirect(w, r, "/", http.StatusSeeOther)
+}package main
+
+import (
+    "fmt"
+    "html/template"
+    "net/http"
+    "strconv"
+)
+
+func main() {
+    http.HandleFunc("/", calculatorHandler)
+    http.HandleFunc("/calculate", calculateHandler)
+    fmt.Println("Server chal raha hai: http://localhost:8080")
+    http.ListenAndServe(":8080", nil)
+}
+
+func calculatorHandler(w http.ResponseWriter, r *http.Request) {
+    tmpl := `
+    <!DOCTYPE html>
+    <html>
+    <head><title>Go Calculator</title></head>
+    <body>
+        <h1>Calculator App</h1>
+        <form action="/calculate" method="post">
+            Number 1: <input type="number" name="num1" required><br><br>
+            Number 2: <input type="number" name="num2" required><br><br>
+            Operation: 
+            <select name="op">
+                <option value="+">+</option>
+                <option value="-">-</option>
+                <option value="*">×</option>
+                <option value="/">÷</option>
+            </select><br><br>
+            <input type="submit" value="Calculate">
+        </form>
+    </body>
+    </html>`
+    template.Must(template.New("calc").Parse(tmpl)).Execute(w, nil)
+}
+
+func calculateHandler(w http.ResponseWriter, r *http.Request) {
+    if r.Method != "POST" {
+        http.Redirect(w, r, "/", http.StatusSeeOther)
+        return
+    }
+    
+    num1, _ := strconv.ParseFloat(r.FormValue("num1"), 64)
+    num2, _ := strconv.ParseFloat(r.FormValue("num2"), 64)
+    op := r.FormValue("op")
+    
+    var result float64
+    switch op {
+    case "+": result = num1 + num2
+    case "-": result = num1 - num2
+    case "*": result = num1 * num2
+    case "/":
+        if num2 == 0 {
+            http.Error(w, "Division by zero!", http.StatusBadRequest)
+            return
+        }
+        result = num1 / num2
+    }
+    
+    fmt.Fprintf(w, `
+    <h1>Result: %.2f %s %.2f = %.2f</h1>
+    <a href="/">Naya calculation</a>`, num1, op, num2, result)
+}package main
+
+import "fmt"
+
+func isLeapYear(year int) bool {
+    return year%4 == 0 && (year%100 != 0 || year%400 == 0)
+}
+
+func main() {
+    var year int
+    fmt.Print("Enter a year: ")
+    fmt.Scanln(&year)
+
+    if isLeapYear(year) {
+        fmt.Printf("%d is a leap year.
+", year)
+    } else {
+        fmt.Printf("%d is not a leap year.
+", year)
+    }
+}package main
+
+import "fmt"
+
+func main() {
+    var operator string
+    fmt.Println("Enter operator: +, -, *, /")
+    fmt.Scan(&operator)
+
+    var num1, num2 float64
+    fmt.Println("Enter two numbers:")
+    fmt.Scan(&num1, &num2)
+
+    switch operator {
+    case "+":
+        fmt.Println(num1 + num2)
+    case "-":
+        fmt.Println(num1 - num2)
+    case "*":
+        fmt.Println(num1 * num2)
+    case "/":
+        fmt.Println(num1 / num2)
+    default:
+        fmt.Println("Invalid operator")
+    }
+}
