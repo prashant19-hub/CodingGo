@@ -1,0 +1,58 @@
+package main
+import "fmt"
+
+type UserA struct {
+	Name string
+	Address string 
+	contactNo int     //structure1
+
+}
+type UserB struct {
+	Name string
+	Address string 
+	contactNo int    //structure2
+
+}
+
+func main(){
+
+var jonh UserA
+jonh.Name = "Jonh wick"
+jonh.Address ="Kaleen nagar"
+jonh.contactNo = 12345
+                                                          //sort form of wick struct type var
+wick := UserB{
+Name : "kentol",
+Address : "Kashi",
+contactNo : +987654321,
+}
+
+wick.addUser(5)
+fmt.Println("after changing wick Name =",wick)            //yaha se jo fix rahega wah ayega 
+                                                          //agr pointer use kiya ho to nhi ayega 
+value := jonh.addUserDub(123456)
+fmt.Println("value from ADDdub =",value ,"vishal =",jonh)
+jonh.addUser(5)
+add(1234)
+
+}
+
+func add(a int) {
+	fmt.Println("Add A methods are working , add A =",a)
+	
+}                                                         //functions
+
+func (user UserA)addUser(a int){
+	fmt.Println("user A methods are working , user =",user)
+}                                                         //methods
+                                                         //(user UserA&B) is structure
+func (user UserB)addUser(a int){                         
+	user.Name ="changing the name"                       //change the name of UserB (wick) & UserB ke sath *pointer use kare to value wahi ayega after fix value v change nhi hoga
+	fmt.Println("user B methods are working , user =",user)
+	
+}
+func (u UserA)addUserDub(a int) int{
+	fmt.Println("user A Dub methods are working , user =",u)
+	return 0
+	                                                   // u.Name = "user A dub methods change/isme method ya value change kr skte hai "
+}
